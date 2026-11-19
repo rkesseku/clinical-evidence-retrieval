@@ -103,18 +103,18 @@ The test suite (15 tests, run in CI on Python 3.10 to 3.12) uses a small hashing
 # Results
 
 | System | nDCG\@10 | Recall\@100 | MRR\@10 | Median ms / query |
-|---|---|---|---|---|
-| BM25 | 0.322 | 0.242 | 0.527 | 0.4 |
+|----------------------------------------|--------------|-------------------|------------|----------------|
+| BM25 | 0.322 | 0.242 | 0.527 | **0.4** |
 | Dense (bge-small) | 0.344 | 0.313 | 0.531 | 336 |
-| **Hybrid (RRF)** | **0.365** | **0.319** | **0.583** | 337 |
-| Hybrid + cross-encoder | 0.353 | 0.319 | 0.579 | 14,852 |
+| Hybrid (RRF) | **0.365** | **0.319** | **0.583** | 337 |
+| Hybrid + cross-encoder | 0.353 | **0.319** | 0.579 | 14,852 |
 
-: NFCorpus test split, 323 questions. All numbers come from `docs/results/metrics.json`, produced by `evidence-ir run-all`. {#tbl-results}
+: NFCorpus test split, 323 questions. All numbers come from `docs/results/metrics.json`, produced by `evidence-ir run-all`. Bold marks the best value in each column (fastest for latency). {#tbl-results}
 
 ![nDCG\@10 by system. Error bars are the 95% paired-bootstrap interval of each system's difference from BM25 (dashed line).](figures/ndcg_by_system.png){#fig-ndcg width=78%}
 
 | Comparison | Metric | Difference | 95% CI |
-|---|---|---|---|
+|--------------------------------|-------------------|-------------------|------------------------------|
 | Hybrid vs BM25 | nDCG\@10 | +0.043 | [+0.030, +0.056] |
 | Hybrid vs BM25 | Recall\@100 | +0.076 | [+0.060, +0.092] |
 | Dense vs BM25 | nDCG\@10 | +0.022 | [+0.002, +0.042] |
