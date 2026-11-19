@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+build/
+dist/
+.ipynb_checkpoints/
+.quarto/
+# raw data is downloaded, never committed (see README)
+data/raw/
+*.zip
+# model artefacts and caches
+models/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
