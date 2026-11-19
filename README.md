@@ -27,8 +27,8 @@ for one medical corpus, with confidence intervals rather than single numbers:
 [BEIR](https://github.com/beir-cellar/beir) release (Thakur et al., 2021): 3,633 PubMed documents
 (title + abstract) and plain-language health questions from NutritionFacts.org, with graded relevance
 labels (1 = indirectly relevant, 2 = directly cited). The **test** split has 323 queries with at least
-one relevant document; the **train** split (2,590 queries, 110k judgements) is used only by the
-fine-tuning notebook. Download the zip from the official BEIR mirror and unzip it into `data/raw/`
+one relevant document; the **train** split (2,590 queries, 110k judgements) and the **dev** split
+(324 queries) are used only by encoder fine-tuning (training and checkpoint selection respectively). Download the zip from the official BEIR mirror and unzip it into `data/raw/`
 (the data is not redistributed here; see the dataset's own terms):
 
 ```bash
@@ -86,9 +86,20 @@ a laptop CPU that was running other jobs at the same time, so the absolute value
 ordering (BM25 under 1 ms, encoder ~0.3 s, cross-encoder over 10 s for 100 pairs) is the useful part.
 Encoding the 3,633 documents took 17 minutes on that CPU, a one-off cost.
 
-**Encoder fine-tuning** (`notebooks/finetune_embedder_colab.ipynb`) is set up but has **not been run
-yet**: it needs a GPU. When it has been run its output (`finetune_metrics.json`) will be added to
-`docs/results/` and to this table.
+**Encoder fine-tuning** is set up but has **not been run yet**: it needs a GPU, so no fine-tuning
+results are reported here. The procedure lives in `evidence_ir/finetune.py` (tested on CPU with a fake
+encoder) and the Colab notebook `notebooks/finetune_embedder_colab.ipynb` only calls it:
+
+1. train `bge-small` with in-batch-negative contrastive loss (MNRL, no repeated query per batch) on the
+   **train** qrels only;
+2. after each epoch (up to 3, for each learning rate in 1e-5 / 2e-5 / 5e-5) score dense nDCG@10 on the
+   **dev** split with the package's own metric code; the untuned model is a candidate too, so if
+   fine-tuning never helps on dev, the base model is kept;
+3. keep only the best dev checkpoint, then evaluate it and the base model **once** on **test**
+   (BM25, dense and hybrid RRF) and compare them with the paired bootstrap.
+
+The test split plays no part in training or selection. When it has been run, its outputs
+(`finetune_metrics.json`, `finetune_report.md`, per-query scores) will go in `docs/results/finetune/`.
 
 ## What this shows
 
@@ -141,9 +152,10 @@ src/evidence_ir/
   pipeline.py  the four systems with shared stages and per-stage timing
   metrics.py   nDCG / Recall / MRR, paired bootstrap
   evaluate.py  run-all: metrics.json, per_query.csv, report.md, figures
+  finetune.py  encoder fine-tuning: dev-selected checkpoint, single test evaluation
   serve.py     FastAPI app
   testing.py   offline fake encoder/scorer used by the tests
-notebooks/finetune_embedder_colab.ipynb   GPU fine-tuning of the encoder (MNRL)
+notebooks/finetune_embedder_colab.ipynb   Colab (GPU) runner for evidence_ir.finetune
 docs/brief/brief.pdf                       project brief
 ```
 

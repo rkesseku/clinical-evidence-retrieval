@@ -69,7 +69,7 @@ This project answers four concrete questions for one medical corpus, each with a
 
 ## The data
 
-NFCorpus [@boteva2016], in the version distributed with the BEIR benchmark [@thakur2021], pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract; the separate training split (2,590 questions, 110k judgements) is used only for fine-tuning.
+NFCorpus [@boteva2016], in the version distributed with the BEIR benchmark [@thakur2021], pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract; the separate training split (2,590 questions, 110k judgements) and dev split (324 questions) are used only for fine-tuning.
 
 The questions and the documents are written in very different vocabularies ("does cholesterol feed breast cancer?" against a methods-heavy abstract), which is exactly where keyword search struggles and semantic retrieval is supposed to help. NFCorpus is a research benchmark, not clinical-note data, and contains no patient information.
 
@@ -141,7 +141,7 @@ Per question, BM25 took 0.4 ms, the dense encoder about a third of a second and 
 
 ## Fine-tuning (set up, not yet run)
 
-The notebook `notebooks/finetune_embedder_colab.ipynb` fine-tunes the encoder on the 2,590 training questions with a contrastive loss that uses the other documents in each batch as negatives (with no repeated question inside a batch). It then re-runs all systems on the same test split with the same code and paired tests. The hyper-parameters are fixed in advance and the test split is used once. It requires a GPU and has not been run yet, so no fine-tuning results are claimed here.
+The package module `evidence_ir.finetune` (run from a Colab notebook) fine-tunes the encoder on the 2,590 training questions with a contrastive loss that uses the other documents in each batch as negatives (with no repeated question inside a batch). After every epoch, up to three, and for each of three learning rates (1e-5, 2e-5, 5e-5), it scores dense nDCG\@10 on the separate dev split; the untuned model is also a candidate, so fine-tuning is kept only if it helps on dev. The best dev checkpoint and the base model are then each evaluated once on the test split (BM25, dense and hybrid fusion) with the same code and paired tests, so the test split plays no part in training or model selection. An offline test with a fake encoder checks exactly that. It requires a GPU and has not been run yet, so no fine-tuning results are claimed here.
 
 
 # What this demonstrates
