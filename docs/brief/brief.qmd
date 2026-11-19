@@ -1,5 +1,5 @@
 ---
-title: "clinical-evidence-retrieval"
+title: "Clinical Evidence Retrieval"
 subtitle: "Hybrid search and re-ranking for medical evidence retrieval, with every stage measured for quality and cost"
 author:
   - name: "Reagan Kesseku · Project brief · github.com/rkesseku/clinical-evidence-retrieval"
