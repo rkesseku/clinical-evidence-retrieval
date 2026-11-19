@@ -1,4 +1,6 @@
 ---
+bibliography: references.bib
+bibliographystyle: apa
 linkcolor: "#1f4e9e"
 format:
   typst:
@@ -12,6 +14,8 @@ format:
 
 ```{=typst}
 #set text(hyphenate: false)
+#set bibliography(title: "References")
+#show bibliography: set par(justify: false)
 // Three-rule tables (top, below header, bottom) and bold "Figure N" / "Table N" labels
 #set table.hline(stroke: 0.6pt)
 #show table: it => box(stroke: (top: 1pt, bottom: 1pt), it)
@@ -25,6 +29,7 @@ format:
 #let glance(body) = block(fill: rgb("#eef3fb"), stroke: (left: 3pt + rgb("#1f4e9e")), inset: 10pt, radius: 2pt, width: 100%, body)
 // Header: red title, subtitle, author, repository link
 #align(center)[
+  #set par(justify: false)
   #text(size: 17pt, weight: "bold", fill: rgb("#b91c1c"))[Clinical Evidence Retrieval]
   #v(0.5em)
   #text(size: 12pt, weight: "bold")[Hybrid search and re-ranking for medical evidence retrieval, with every stage measured for quality and cost]
@@ -32,6 +37,8 @@ format:
   #text(size: 11pt)[Reagan Kesseku, Ph.D.]
   #linebreak()
   #text(size: 10pt)[#link("https://github.com/rkesseku/clinical-evidence-retrieval")[github.com/rkesseku/clinical-evidence-retrieval]]
+  #v(0.45em)
+  #text(size: 9.5pt)[#emph[Keywords:] information retrieval; hybrid search; BM25; dense retrieval; reciprocal rank fusion; RAG]
 ]
 #v(0.5em)
 ```
@@ -62,7 +69,7 @@ This project answers four concrete questions for one medical corpus, each with a
 
 ## The data
 
-NFCorpus (Boteva et al., 2016), in the version distributed with the BEIR benchmark (Thakur et al., 2021), pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract; the separate training split (2,590 questions, 110k judgements) is used only for fine-tuning.
+NFCorpus [@boteva2016], in the version distributed with the BEIR benchmark [@thakur2021], pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract; the separate training split (2,590 questions, 110k judgements) is used only for fine-tuning.
 
 The questions and the documents are written in very different vocabularies ("does cholesterol feed breast cancer?" against a methods-heavy abstract), which is exactly where keyword search struggles and semantic retrieval is supposed to help. NFCorpus is a research benchmark, not clinical-note data, and contains no patient information.
 
@@ -75,10 +82,10 @@ The questions and the documents are written in very different vocabularies ("doe
 
 ## The stages
 
-- *BM25* (Robertson & Zaragoza, 2009) is the standard keyword ranking function. It is implemented here from scratch over an inverted index, with Lucene-style IDF, light stemming and the common default parameters `k1 = 0.9`, `b = 0.4`. Nothing was tuned on the test questions.
-- *Dense retrieval* encodes every abstract once with `BAAI/bge-small-en-v1.5` (33M parameters) and ranks documents by cosine similarity to the encoded question. At 3,633 documents, exact search over all vectors is simple and fast enough; a larger corpus would use an approximate index.
-- *Reciprocal rank fusion* (Cormack et al., 2009) scores each document by the sum of `1 / (60 + rank)` across the two lists. It uses only ranks, so BM25 scores and cosine similarities never need to be put on a common scale. This is why RRF is robust and popular in production search.
-- *Cross-encoder re-ranking* feeds each (question, abstract) pair to `cross-encoder/ms-marco-MiniLM-L-6-v2`, a model trained on Bing search data (MS MARCO), and re-orders the top 100 fused candidates by its score.
+- *BM25* [@robertson2009] is the standard keyword ranking function. It is implemented here from scratch over an inverted index, with Lucene-style IDF, light stemming and the common default parameters `k1 = 0.9`, `b = 0.4`. Nothing was tuned on the test questions.
+- *Dense retrieval* encodes every abstract once with `BAAI/bge-small-en-v1.5` (33M parameters) [@xiao2023cpack] and ranks documents by cosine similarity to the encoded question. At 3,633 documents, exact search over all vectors is simple and fast enough; a larger corpus would use an approximate index.
+- *Reciprocal rank fusion* [@cormack2009] scores each document by the sum of `1 / (60 + rank)` across the two lists. It uses only ranks, so BM25 scores and cosine similarities never need to be put on a common scale. This is why RRF is robust and popular in production search.
+- *Cross-encoder re-ranking* [@nogueira2019] feeds each (question, abstract) pair to `cross-encoder/ms-marco-MiniLM-L-6-v2`, a model trained on Bing search data (MS MARCO) [@nguyen2016msmarco], and re-orders the top 100 fused candidates by its score.
 
 ## Evaluation design
 
@@ -163,4 +170,4 @@ python docs/brief/make_figures.py       # figures for this brief
 evidence-ir serve --port 8000           # POST /search, GET /health
 ```
 
-The data is the BEIR release of NFCorpus, downloaded from the official BEIR mirror into `data/raw/` (it is not redistributed in the repository). References: Boteva et al. (2016), *A Full-Text Learning to Rank Dataset for Medical Information Retrieval*, ECIR; Thakur et al. (2021), *BEIR*, NeurIPS Datasets and Benchmarks; Robertson & Zaragoza (2009), *The Probabilistic Relevance Framework: BM25 and Beyond*; Cormack, Clarke & Buettcher (2009), *Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods*, SIGIR.
+The data is the BEIR release of NFCorpus, downloaded from the official BEIR mirror into `data/raw/` (it is not redistributed in the repository).

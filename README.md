@@ -144,7 +144,7 @@ src/evidence_ir/
   serve.py     FastAPI app
   testing.py   offline fake encoder/scorer used by the tests
 notebooks/finetune_embedder_colab.ipynb   GPU fine-tuning of the encoder (MNRL)
-docs/brief/brief.pdf                       5-page project brief
+docs/brief/brief.pdf                       project brief
 ```
 
 ## References
