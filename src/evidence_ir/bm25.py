@@ -32,6 +32,8 @@ class BM25Retriever:
         self._postings: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._idf: dict[str, float] = {}
         self._norm: np.ndarray = np.zeros(0)
+        self._lengths: np.ndarray = np.zeros(0)
+        self._avgdl = 0.0
 
     def index(self, corpus: dict[str, str]) -> BM25Retriever:
         self.doc_ids = list(corpus)
@@ -51,7 +53,13 @@ class BM25Retriever:
         self._idf = {
             t: math.log(1.0 + (n - len(p) + 0.5) / (len(p) + 0.5)) for t, p in postings.items()
         }
-        self._norm = self.k1 * (1.0 - self.b + self.b * lengths / max(avgdl, 1e-9))
+        self._lengths, self._avgdl = lengths, avgdl
+        return self.set_params(self.k1, self.b)
+
+    def set_params(self, k1: float, b: float) -> BM25Retriever:
+        """Change ``k1`` and ``b`` in place; only the length normalisation depends on them."""
+        self.k1, self.b = float(k1), float(b)
+        self._norm = self.k1 * (1.0 - self.b + self.b * self._lengths / max(self._avgdl, 1e-9))
         return self
 
     def scores(self, query: str) -> np.ndarray:

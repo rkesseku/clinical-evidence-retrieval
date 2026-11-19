@@ -101,6 +101,25 @@ encoder) and the Colab notebook `notebooks/finetune_embedder_colab.ipynb` only c
 The test split plays no part in training or selection. When it has been run, its outputs
 (`finetune_metrics.json`, `finetune_report.md`, per-query scores) will go in `docs/results/finetune/`.
 
+## Does tuning the defaults help? (Optuna on the dev split)
+
+`evidence-ir tune` runs two Optuna (TPE) searches of 200 trials each on the 324 **dev** questions, with
+the library defaults enqueued as the first trial: BM25 `k1`/`b`, and for the hybrid also the RRF constant
+`k` and a weight on the dense list (weighted RRF). Each tuned setting and the defaults were then scored
+once on test (full report in `docs/results/tuning/`; dense embeddings are cached, the search took 7 minutes).
+
+| System | Setting | Dev nDCG\@10 | Test nDCG\@10 | Test MRR\@10 |
+|---|---|---|---|---|
+| BM25 | default (`k1`=0.9, `b`=0.4) | 0.2837 | 0.3218 | 0.5272 |
+| BM25 | tuned (`k1`=2.34, `b`=0.50) | **0.2890** | **0.3249** | **0.5326** |
+| Hybrid | default (`k`=60, equal weights) | 0.3349 | **0.3650** | **0.5825** |
+| Hybrid | tuned (`k1`=2.72, `b`=0.14, `k`=14.6, dense weight 2.0) | **0.3415** | 0.3583 | 0.5593 |
+
+Tuning raised dev nDCG\@10 a little but did not carry over: on test, tuned BM25 gained +0.003
+(95% CI −0.002 to +0.009) and the tuned hybrid lost −0.007 (CI −0.015 to +0.002), with a significant
+MRR\@10 loss (−0.023, CI −0.044 to −0.002). The defaults are already close to optimal for this corpus,
+so the headline numbers above keep them.
+
 ## What this shows
 
 * Hybrid retrieval is the clear win on this corpus: cheap to add (fusion costs well under 1 ms), and
@@ -115,8 +134,8 @@ The test split plays no part in training or selection. When it has been run, its
 
 * One corpus, one test split, one run of each model (the neural stages are deterministic at inference,
   so the uncertainty shown is sampling over queries, not training variance).
-* Hyper-parameters (BM25 `k1`/`b`, RRF `k`, candidate depth 100) are standard defaults; nothing was tuned
-  on the test split, and tuning on the dev split might move all systems.
+* Hyper-parameters (BM25 `k1`/`b`, RRF `k`, candidate depth 100) are standard defaults; a 200-trial Optuna
+  search on the dev split did not improve them on test (see above). Candidate depth was not tuned.
 * Only small, CPU-friendly models were tested. Larger encoders and medical-domain re-rankers would
   likely change the re-ranking conclusion.
 * Exact (brute-force) vector search is fine at 3.6k documents; a larger corpus would need an ANN index.

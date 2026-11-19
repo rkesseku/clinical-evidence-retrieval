@@ -26,7 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 models = ["torch>=2.1", "sentence-transformers>=3.0"]
 serve = ["uvicorn>=0.30"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+tune = ["optuna>=3.0"]
+dev = ["pytest>=8.0", "ruff>=0.6", "optuna>=3.0"]
 
 [project.scripts]
 evidence-ir = "evidence_ir.cli:main"

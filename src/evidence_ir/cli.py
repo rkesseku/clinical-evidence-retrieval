@@ -1,4 +1,4 @@
-"""Command line: ``evidence-ir run-all`` (evaluate) and ``evidence-ir serve`` (FastAPI)."""
+"""Command line: ``evidence-ir run-all`` (evaluate), ``tune`` (Optuna on dev) and ``serve``."""
 
 from __future__ import annotations
 
@@ -45,7 +45,42 @@ def main(argv: list[str] | None = None) -> int:
     sub.choices["run-all"].add_argument("--n-boot", type=int, default=2000)
     sub.choices["serve"].add_argument("--host", default="127.0.0.1")
     sub.choices["serve"].add_argument("--port", type=int, default=8000)
+    t = sub.add_parser("tune", help="Optuna search for BM25 / fusion settings on the dev split")
+    t.add_argument("--data", default="data/raw/nfcorpus")
+    t.add_argument("--encoder", default=DEFAULT_ENCODER)
+    t.add_argument("--trials", type=int, default=200)
+    t.add_argument("--seed", type=int, default=0)
+    t.add_argument("--n-boot", type=int, default=2000)
+    t.add_argument("--threads", type=int, default=None, help="torch threads for encoding")
+    t.add_argument("--cache", default="data/cache/nfcorpus_bge-small_docs.npz")
+    t.add_argument("--out", default="docs/results/tuning")
     args = p.parse_args(argv)
+
+    if args.cmd == "tune":
+        from .dense import SentenceTransformerEncoder
+        from .tuning import run_tuning
+
+        if args.threads:
+            import torch
+
+            torch.set_num_threads(args.threads)
+        dev, test = load_beir(args.data, "dev"), load_beir(args.data, "test")
+        r = run_tuning(
+            dev,
+            test,
+            SentenceTransformerEncoder(args.encoder),
+            args.out,
+            n_trials=args.trials,
+            seed=args.seed,
+            n_boot=args.n_boot,
+            cache=args.cache,
+        )
+        for name, s in r["systems"].items():
+            d = s["test_tuned_minus_default"]["ndcg@10"]
+            ndcg = s["test_tuned"]["ndcg@10"]
+            print(f"{name}: tuned {s['params_tuned']} test nDCG@10 {ndcg:.4f} "
+                  f"({d['diff']:+.4f} [{d['ci_low']:+.4f}, {d['ci_high']:+.4f}])")
+        return 0
 
     if args.cmd == "run-all":
         from .evaluate import evaluate, write_outputs

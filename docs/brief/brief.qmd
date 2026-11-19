@@ -140,6 +140,10 @@ The test suite (15 tests, run in CI on Python 3.10 to 3.12) uses a small hashing
 
 Per question, BM25 took 0.4 ms, the dense encoder about a third of a second and the cross-encoder over 14 seconds for 100 pairs (medians on a shared laptop CPU). Encoding the corpus once took 17 minutes on the same CPU; on a GPU both neural stages are much faster, but the ratios between stages remain. For this corpus the best quality-per-millisecond is hybrid fusion: it is the most accurate system and costs essentially the same as the dense retriever alone.
 
+## Does tuning the defaults help?
+
+Two Optuna searches [@akiba2019] of 200 trials each tuned BM25 `k1`/`b` and, for the hybrid, also the fusion constant and a weight on the dense list, maximising nDCG\@10 on the 324 dev questions with the defaults as the first trial. Both found settings that were slightly better on dev (BM25 0.284 to 0.289, hybrid 0.335 to 0.342), but neither carried over to test: tuned BM25 gained +0.003 (95% CI −0.002 to +0.009) and the tuned hybrid lost −0.007 (CI −0.015 to +0.002), with a significant loss in MRR\@10. The standard defaults are already close to optimal here, so all reported results use them.
+
 ## Fine-tuning (set up, not yet run)
 
 The package module `evidence_ir.finetune` (run from a Colab notebook) fine-tunes the encoder on the 2,590 training questions with a contrastive loss that uses the other documents in each batch as negatives (with no repeated question inside a batch). After every epoch, up to three, and for each of three learning rates (1e-5, 2e-5, 5e-5), it scores dense nDCG\@10 on the separate dev split; the untuned model is also a candidate, so fine-tuning is kept only if it helps on dev. The best dev checkpoint and the base model are then each evaluated once on the test split (BM25, dense and hybrid fusion) with the same code and paired tests, so the test split plays no part in training or model selection. An offline test with a fake encoder checks exactly that. It requires a GPU and has not been run yet, so no fine-tuning results are claimed here.
@@ -155,7 +159,7 @@ The package module `evidence_ir.finetune` (run from a Colab notebook) fine-tunes
 # Limitations and next steps
 
 - *One corpus, one split, one run per model.* The intervals reflect sampling over questions, not training variance or other corpora. The conclusions, especially about re-ranking, may not transfer to other medical collections or to clinical notes.
-- *Default parameters.* BM25 `k1`/`b`, the fusion constant and the candidate depth are standard defaults. Tuning them on the dev split is a natural next step and could move all systems.
+- *Default parameters.* BM25 `k1`/`b` and the fusion constant are standard defaults; a dev-split Optuna search did not beat them on test. Candidate depth was not tuned.
 - *Small models only.* Larger embedding models, a weighted fusion learned on dev data, and a domain-adapted (biomedical) re-ranker are the obvious experiments, each to be judged against hybrid fusion using the same paired tests.
 - *Latency was measured on a busy laptop CPU.* Serving numbers should be re-measured on the target hardware with batching.
 - *Fine-tuning has not yet been run* (see above).
