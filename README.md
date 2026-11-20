@@ -4,32 +4,34 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rkesseku/clinical-evidence-retrieval/blob/main/notebooks/finetune_embedder_colab.ipynb)
 
 **Hybrid search and re-ranking for medical evidence retrieval, measured honestly.**
-A retrieval stack of the kind that sits underneath every RAG system: BM25, a dense bi-encoder,
-reciprocal rank fusion and a cross-encoder re-ranker, evaluated stage by stage on the BEIR
-**NFCorpus** medical benchmark with per-query paired bootstrap tests and per-stage latency, plus a
-FastAPI `/search` service and a Colab notebook that fine-tunes the encoder on the training queries.
+This repo builds the kind of retrieval stack that sits underneath every RAG system (BM25, a dense
+bi-encoder, reciprocal rank fusion and a cross-encoder re-ranker) and evaluates it stage by stage on the
+BEIR **NFCorpus** medical benchmark, with per-query paired bootstrap tests and per-stage latency. It also
+includes a FastAPI `/search` service and a Colab notebook that fine-tunes the encoder on the training queries.
 
 ## Why this exists
 
 When a RAG answer is wrong, the cause is usually upstream: the right document was never retrieved.
-Teams often bolt on "hybrid search" and "a re-ranker" because they are best practice, without
-measuring whether each stage pays for its latency *on their own data*. This repo answers that question
+Teams often bolt on "hybrid search" and "a re-ranker" because both are considered best practice,
+without measuring whether each stage is worth its latency *on their own data*. This repo answers that question
 for one medical corpus, with confidence intervals rather than single numbers:
 
 * how much does a dense encoder add over a well-configured BM25 baseline?
 * does fusing the two beat either alone?
-* does an off-the-shelf cross-encoder (trained on web search, MS MARCO) help on medical text?
+* does an off-the-shelf cross-encoder (trained on MS MARCO web search data) help on medical text?
 * what does each stage cost per query?
 
 ## Data
 
 [NFCorpus](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/) (Boteva et al., 2016) in its
-[BEIR](https://github.com/beir-cellar/beir) release (Thakur et al., 2021): 3,633 PubMed documents
-(title + abstract) and plain-language health questions from NutritionFacts.org, with graded relevance
-labels (1 = indirectly relevant, 2 = directly cited). The **test** split has 323 queries with at least
-one relevant document; the **train** split (2,590 queries, 110k judgements) and the **dev** split
-(324 queries) are used only by encoder fine-tuning (training and checkpoint selection respectively). Download the zip from the official BEIR mirror and unzip it into `data/raw/`
-(the data is not redistributed here; see the dataset's own terms):
+[BEIR](https://github.com/beir-cellar/beir) release (Thakur et al., 2021) pairs plain-language health questions
+from NutritionFacts.org with 3,633 PubMed documents (title + abstract), using graded relevance labels
+(1 = indirectly relevant, 2 = directly cited). The **test** split has 323 queries with at least
+one relevant document. The **train** split (2,590 queries, 110k judgements) and the **dev** split
+(324 queries) are used for encoder fine-tuning, for training and checkpoint selection respectively.
+The dev split also serves the Optuna search below. Neither split is used for evaluation.
+The data is not redistributed here (see the dataset's own terms). Download the zip from the official
+BEIR mirror and unzip it into `data/raw/`:
 
 ```bash
 curl -L -o data/raw/nfcorpus.zip https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip
@@ -50,10 +52,10 @@ vocabulary gap between the two is large. That is what makes NFCorpus a useful, h
 | Re-rank | `cross-encoder/ms-marco-MiniLM-L-6-v2` | re-scores the top 100 fused candidates |
 
 Every system retrieves 100 candidates and is scored by one function (`evidence_ir.metrics`) using
-trec_eval/BEIR conventions: nDCG@10 with graded gain, Recall@100, MRR@10. Differences are tested with a
-**paired bootstrap over queries** (2,000 resamples, seed 0), reporting the mean difference, a 95%
-percentile interval and a one-sided p-value. Latency is wall-clock per query, one query at a time,
-on CPU.
+trec_eval/BEIR conventions: nDCG@10 with graded gain, Recall@100 and MRR@10. Differences are tested with a
+**paired bootstrap over queries** (2,000 resamples, seed 0), which reports the mean difference, a 95%
+percentile interval and a one-sided p-value. Latency is wall-clock time per query, measured one query
+at a time on CPU.
 
 ## Results
 
@@ -71,42 +73,42 @@ are stored in [`docs/results/metrics.json`](docs/results/metrics.json), with per
 
 Paired bootstrap differences in nDCG@10 (95% CI):
 
-* **Hybrid vs BM25: +0.043 [+0.030, +0.056]**, a 13% relative gain; Recall@100 +0.076 [+0.060, +0.092].
+* **Hybrid vs BM25: +0.043 [+0.030, +0.056]**, a 13% relative gain. Recall@100 rose by +0.076 [+0.060, +0.092].
 * Dense vs BM25: +0.022 [+0.002, +0.042]. Hybrid vs dense: +0.021 [+0.008, +0.035].
   Fusion beats both of its inputs.
 * **Re-rank vs hybrid: −0.012 [−0.026, +0.001].** The MS MARCO cross-encoder did *not* help here,
-  while adding roughly 14.5 s per query on CPU. It was trained on web search clicks, and on consumer
-  health questions against research abstracts it is out of its domain.
+  while adding roughly 14.5 s per query on CPU. It was trained on web search clicks, so consumer
+  health questions paired with research abstracts lie outside its domain.
 
 ![nDCG@10 by system](docs/results/ndcg_by_system.png)
 
 **Reading these numbers.** The BM25 figure (0.322) matches the BM25 baseline the BEIR paper reports for
-this dataset (0.325), which is a check that the evaluation code is right. The latency figures come from
-a laptop CPU that was running other jobs at the same time, so the absolute values are pessimistic; the
+this dataset (0.325), which is a check that the evaluation code is correct. The latency figures come from
+a laptop CPU that was running other jobs at the same time, so the absolute values are pessimistic. The
 ordering (BM25 under 1 ms, encoder ~0.3 s, cross-encoder over 10 s for 100 pairs) is the useful part.
 Encoding the 3,633 documents took 17 minutes on that CPU, a one-off cost.
 
-**Encoder fine-tuning** is set up but has **not been run yet**: it needs a GPU, so no fine-tuning
+**Encoder fine-tuning** is set up but has **not been run yet** because it needs a GPU, so no fine-tuning
 results are reported here. The procedure lives in `evidence_ir/finetune.py` (tested on CPU with a fake
-encoder) and the Colab notebook `notebooks/finetune_embedder_colab.ipynb` only calls it:
+encoder), and the Colab notebook `notebooks/finetune_embedder_colab.ipynb` simply calls it. The steps are:
 
-1. train `bge-small` with in-batch-negative contrastive loss (MNRL, no repeated query per batch) on the
-   **train** qrels only;
-2. after each epoch (up to 3, for each learning rate in 1e-5 / 2e-5 / 5e-5) score dense nDCG@10 on the
-   **dev** split with the package's own metric code; the untuned model is a candidate too, so if
-   fine-tuning never helps on dev, the base model is kept;
-3. keep only the best dev checkpoint, then evaluate it and the base model **once** on **test**
+1. Train `bge-small` with in-batch-negative contrastive loss (MNRL, no repeated query per batch) on the
+   **train** qrels only.
+2. For each learning rate (1e-5 / 2e-5 / 5e-5), train for up to 3 epochs and score dense nDCG@10 on the
+   **dev** split after each epoch, using the package's own metric code. The untuned model is a candidate
+   too, so if fine-tuning never helps on dev, the base model is kept.
+3. Keep only the best dev checkpoint, then evaluate it and the base model **once** on **test**
    (BM25, dense and hybrid RRF) and compare them with the paired bootstrap.
 
-The test split plays no part in training or selection. When it has been run, its outputs
+The test split plays no part in training or selection. Once fine-tuning has been run, its outputs
 (`finetune_metrics.json`, `finetune_report.md`, per-query scores) will go in `docs/results/finetune/`.
 
 ## Does tuning the defaults help? (Optuna on the dev split)
 
 `evidence-ir tune` runs two Optuna (TPE) searches of 200 trials each on the 324 **dev** questions, with
-the library defaults enqueued as the first trial: BM25 `k1`/`b`, and for the hybrid also the RRF constant
-`k` and a weight on the dense list (weighted RRF). Each tuned setting and the defaults were then scored
-once on test (full report in `docs/results/tuning/`; dense embeddings are cached, the search took 7 minutes).
+the library defaults enqueued as the first trial. One searches BM25 `k1`/`b`. The other searches the hybrid, which adds the RRF
+constant `k` and a weight on the dense list (weighted RRF). Each tuned setting and the defaults were then
+scored once on test (full report in `docs/results/tuning/`). With the dense embeddings cached, the search took 7 minutes.
 
 | System | Setting | Dev nDCG\@10 | Test nDCG\@10 | Test MRR\@10 |
 |---|---|---|---|---|
@@ -115,30 +117,30 @@ once on test (full report in `docs/results/tuning/`; dense embeddings are cached
 | Hybrid | default (`k`=60, equal weights) | 0.3349 | **0.3650** | **0.5825** |
 | Hybrid | tuned (`k1`=2.72, `b`=0.14, `k`=14.6, dense weight 2.0) | **0.3415** | 0.3583 | 0.5593 |
 
-Tuning raised dev nDCG\@10 a little but did not carry over: on test, tuned BM25 gained +0.003
-(95% CI −0.002 to +0.009) and the tuned hybrid lost −0.007 (CI −0.015 to +0.002), with a significant
-MRR\@10 loss (−0.023, CI −0.044 to −0.002). The defaults are already close to optimal for this corpus,
+Tuning raised dev nDCG\@10 a little, but the gains did not carry over. On test, tuned BM25 changed
+nDCG\@10 by +0.003 (95% CI −0.002 to +0.009) and the tuned hybrid by −0.007 (CI −0.015 to +0.002), and
+the tuned hybrid also showed a significant MRR\@10 loss (−0.023, CI −0.044 to −0.002). The defaults are already close to optimal for this corpus,
 so the headline numbers above keep them.
 
 ## What this shows
 
-* Hybrid retrieval is the clear win on this corpus: cheap to add (fusion costs well under 1 ms), and
+* Hybrid retrieval is the clear win on this corpus. It is cheap to add (fusion costs well under 1 ms) and
   significantly better than either lexical or dense retrieval alone on every metric.
-* "Add a re-ranker" is not automatically right. A general-purpose cross-encoder cost two orders of magnitude
-  more latency and made ranking slightly worse. Re-rankers should be validated on in-domain judgements,
-  or a domain-adapted one used.
-* Paired, per-query testing matters: the dense model's MRR gain over BM25 (+0.004) is noise, while its
+* "Add a re-ranker" is not automatically right. A general-purpose cross-encoder made each query about 44 times
+  slower than hybrid retrieval and made ranking slightly worse. A re-ranker should be validated on in-domain judgements
+  or replaced by a domain-adapted one.
+* Paired, per-query testing matters. The dense model's MRR gain over BM25 (+0.004) is noise, while its
   Recall@100 gain (+0.070) is not.
 
 ## Limitations
 
 * One corpus, one test split, one run of each model (the neural stages are deterministic at inference,
-  so the uncertainty shown is sampling over queries, not training variance).
-* Hyper-parameters (BM25 `k1`/`b`, RRF `k`, candidate depth 100) are standard defaults; a 200-trial Optuna
+  so the uncertainty shown is sampling over queries rather than training variance).
+* Hyper-parameters (BM25 `k1`/`b`, RRF `k`, candidate depth 100) are standard defaults. A 200-trial Optuna
   search on the dev split did not improve them on test (see above). Candidate depth was not tuned.
 * Only small, CPU-friendly models were tested. Larger encoders and medical-domain re-rankers would
   likely change the re-ranking conclusion.
-* Exact (brute-force) vector search is fine at 3.6k documents; a larger corpus would need an ANN index.
+* Exact (brute-force) vector search is fine at 3.6k documents, but a larger corpus would need an ANN index.
 
 ## How to run
 
