@@ -1,6 +1,9 @@
 ---
 bibliography: references.bib
-bibliographystyle: apa
+csl: apa.csl
+citeproc: true
+link-citations: true
+link-bibliography: true
 linkcolor: "#1f4e9e"
 format:
   typst:
@@ -13,6 +16,7 @@ format:
 ---
 
 ```{=typst}
+#show <refs>: set par(hanging-indent: 0.5in, first-line-indent: 0pt, justify: false)
 #set text(hyphenate: false)
 #set bibliography(title: "References")
 #show cite: set text(fill: rgb("#1f4e9e"))
@@ -39,7 +43,7 @@ format:
   #linebreak()
   #text(size: 10pt)[#link("https://github.com/rkesseku/clinical-evidence-retrieval")[github.com/rkesseku/clinical-evidence-retrieval]]
   #v(0.45em)
-  #text(size: 9.5pt)[#emph[Keywords:] information retrieval; hybrid search; BM25; dense retrieval; reciprocal rank fusion; RAG]
+  #text(size: 9.5pt)[#emph[Keywords:] information retrieval, hybrid search, BM25, dense retrieval, reciprocal rank fusion, RAG]
 ]
 #v(0.5em)
 ```
@@ -47,8 +51,8 @@ format:
 ```{=typst}
 #glance[
 *At a glance* \
-*Problem:* A retrieval-augmented (RAG) assistant can only be as good as the documents it retrieves. Teams add "hybrid search" and "a re-ranker" because they are considered best practice, usually without measuring whether each stage earns its latency on their own data. \
-*What I built:* A retrieval stack (BM25, a dense bi-encoder, reciprocal rank fusion and a cross-encoder re-ranker) with one shared evaluation harness: graded nDCG\@10, Recall\@100 and MRR\@10, paired bootstrap tests over queries, per-stage latency, a FastAPI `/search` service, and a Colab notebook that fine-tunes the encoder. \
+*Problem:* A retrieval-augmented (RAG) assistant can only be as good as the documents it retrieves. Teams add "hybrid search" and "a re-ranker" because they are considered best practice. They rarely measure whether each stage earns its latency on their own data. \
+*What I built:* A retrieval stack (BM25, a dense bi-encoder, reciprocal rank fusion and a cross-encoder re-ranker) with one shared evaluation harness. The harness reports graded nDCG\@10, Recall\@100 and MRR\@10, paired bootstrap tests over queries and per-stage latency. A FastAPI `/search` service and a Colab notebook that fine-tunes the encoder come with it. \
 *Headline result:* On the 323 test queries of the BEIR NFCorpus medical benchmark, hybrid search raised nDCG\@10 from *0.322 (BM25) to 0.365*, a paired difference of +0.043 (95% CI [+0.030, +0.056]). An off-the-shelf web-search cross-encoder did *not* help (−0.012, CI [−0.026, +0.001]) and cost about 14.5 s per query on CPU. \
 *Stack:* Python, NumPy, sentence-transformers (bge-small-en-v1.5, MiniLM cross-encoder), FastAPI, pydantic, matplotlib, pytest, GitHub Actions. \
 *Repo:* #link("https://github.com/rkesseku/clinical-evidence-retrieval")[github.com/rkesseku/clinical-evidence-retrieval]
@@ -57,11 +61,11 @@ format:
 
 # The problem
 
-Most "AI assistant" systems built on company or clinical knowledge follow the same pattern: a user asks a question, a *retriever* finds a handful of relevant documents, and a language model writes an answer from them. When the answer is wrong, the cause is very often the retriever. If the right document never makes it into the handful, no amount of prompt engineering can recover it.
+Most "AI assistant" systems built on company or clinical knowledge follow the same pattern. A user asks a question, a *retriever* finds a handful of relevant documents, and a language model writes an answer from them. When the answer is wrong, the cause is very often the retriever. If the right document never makes it into the handful, no amount of prompt engineering can recover it.
 
-Retrieval also has a cost profile that people underestimate. A keyword index answers in well under a millisecond. A neural encoder adds hundreds of milliseconds on a CPU. A cross-encoder, which reads the query and each candidate document together, is far more expensive again. Whether those costs are worth paying is an empirical question about a specific corpus and a specific user population, not a matter of best practice.
+Retrieval also has a cost profile that people underestimate. A keyword index answers in well under a millisecond. A neural encoder adds hundreds of milliseconds on a CPU. A cross-encoder, which reads the query and each candidate document together, is far more expensive again. Whether those costs are worth paying depends on the corpus and the people searching it. Best practice cannot settle that, but a measurement can.
 
-This project answers four concrete questions for one medical corpus, each with a confidence interval rather than a single number:
+For one medical corpus, this project answers four concrete questions, each with a confidence interval instead of a single number.
 
 1. How much does a dense (embedding) retriever add over a well-configured keyword baseline?
 2. Does fusing the two beat either one alone?
@@ -70,30 +74,30 @@ This project answers four concrete questions for one medical corpus, each with a
 
 ## The data
 
-NFCorpus [@boteva2016], in the version distributed with the BEIR benchmark [@thakur2021], pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract; the separate training split (2,590 questions, 110k judgements) and dev split (324 questions) are used only for fine-tuning.
+NFCorpus [@boteva2016], in the version distributed with the BEIR benchmark [@thakur2021], pairs *plain-language health questions* written for the public (from NutritionFacts.org) with *PubMed research abstracts*, labelled 2 (directly cited as evidence) or 1 (indirectly relevant). The corpus has 3,633 abstracts. The test split has 323 questions with at least one relevant abstract. The separate training split (2,590 questions, 110k judgements) and dev split (324 questions) are used only for fine-tuning.
 
-The questions and the documents are written in very different vocabularies ("does cholesterol feed breast cancer?" against a methods-heavy abstract), which is exactly where keyword search struggles and semantic retrieval is supposed to help. NFCorpus is a research benchmark, not clinical-note data, and contains no patient information.
+The questions and the documents use very different vocabularies ("does cholesterol feed breast cancer?" against a methods-heavy abstract). Keyword search struggles in exactly this setting, and semantic retrieval is supposed to help. NFCorpus is a research benchmark, not clinical-note data, and contains no patient information.
 
 
 # Approach
 
 ## Architecture
 
-![The four systems share their stages. BM25 and the dense encoder each return 100 candidates; reciprocal rank fusion merges the two lists by rank alone; the cross-encoder re-scores the top 100 fused candidates. Every system's output goes through the same scorer.](figures/architecture.png){#fig-arch width=100%}
+![The four systems share their stages. BM25 and the dense encoder each return 100 candidates. Reciprocal rank fusion merges the two lists by rank alone, and the cross-encoder re-scores the top 100 fused candidates. Every system's output goes through the same scorer.](figures/architecture.png){#fig-arch width=100%}
 
 ## The stages
 
 - *BM25* [@robertson2009] is the standard keyword ranking function. It is implemented here from scratch over an inverted index, with Lucene-style IDF, light stemming and the common default parameters `k1 = 0.9`, `b = 0.4`. Nothing was tuned on the test questions.
-- *Dense retrieval* encodes every abstract once with `BAAI/bge-small-en-v1.5` (33M parameters) [@xiao2023cpack] and ranks documents by cosine similarity to the encoded question. At 3,633 documents, exact search over all vectors is simple and fast enough; a larger corpus would use an approximate index.
-- *Reciprocal rank fusion* [@cormack2009] scores each document by the sum of `1 / (60 + rank)` across the two lists. It uses only ranks, so BM25 scores and cosine similarities never need to be put on a common scale. This is why RRF is robust and popular in production search.
+- *Dense retrieval* encodes every abstract once with `BAAI/bge-small-en-v1.5` (33M parameters) [@xiao2023cpack] and ranks documents by cosine similarity to the encoded question. At 3,633 documents, exact search over all vectors is simple and fast enough. A larger corpus would use an approximate index.
+- *Reciprocal rank fusion* [@cormack2009] scores each document by the sum of `1 / (60 + rank)` across the two lists. Because it uses only ranks, BM25 scores and cosine similarities never have to be put on a common scale. That property is why RRF is robust and popular in production search.
 - *Cross-encoder re-ranking* [@nogueira2019] feeds each (question, abstract) pair to `cross-encoder/ms-marco-MiniLM-L-6-v2`, a model trained on Bing search data (MS MARCO) [@nguyen2016msmarco], and re-orders the top 100 fused candidates by its score.
 
 ## Evaluation design
 
-All four systems are scored by one function that follows the trec_eval / BEIR conventions:
+All four systems are scored by one function that follows the trec_eval / BEIR conventions.
 
-- *nDCG\@10* rewards putting directly relevant (label 2) documents above indirectly relevant (label 1) ones in the first ten results;
-- *Recall\@100* measures how much of the relevant evidence reaches the candidate pool at all;
+- *nDCG\@10* rewards putting directly relevant (label 2) documents above indirectly relevant (label 1) ones in the first ten results.
+- *Recall\@100* measures how much of the relevant evidence reaches the candidate pool at all.
 - *MRR\@10* measures how high the first relevant result appears.
 
 Because the same 323 questions are answered by every system, the comparisons are *paired*. For each pair of systems the harness resamples questions 2,000 times and reports the mean per-question difference, a 95% percentile interval and a one-sided p-value. Latency is wall-clock time per question, one question at a time, on a laptop CPU. The BM25 baseline reproduces the BEIR paper's published BM25 score for this dataset (0.322 here against 0.325 reported), which checks that the data loading and scoring are right.
@@ -123,43 +127,43 @@ The test suite (15 tests, run in CI on Python 3.10 to 3.12) uses a small hashing
 | Hybrid vs dense | nDCG\@10 | +0.021 | [+0.008, +0.035] |
 | Re-rank vs hybrid | nDCG\@10 | −0.012 | [−0.026, +0.001] |
 
-: Selected paired-bootstrap comparisons; the full table is in `docs/results/report.md`. {#tbl-boot}
+: Selected paired-bootstrap comparisons. The full table is in `docs/results/report.md`. {#tbl-boot}
 
 
 ## What the numbers say
 
-*Fusion is the clear win.* Hybrid search beats BM25 on every metric, with intervals well clear of zero: +13% relative nDCG\@10 and nearly a third more of the relevant evidence in the top 100. It also beats the dense retriever alone (+0.021 nDCG\@10, +0.052 MRR\@10). Keyword and semantic matching fail on different questions, so combining them by rank recovers the strengths of both, for a fusion cost well under a millisecond.
+*Fusion is the clear win.* Hybrid search beats BM25 on every metric, with intervals well clear of zero. Relative nDCG\@10 rises by +13%, and hybrid puts nearly a third more of the relevant evidence in the top 100. It also beats the dense retriever alone (+0.021 nDCG\@10, +0.052 MRR\@10). Keyword and semantic matching fail on different questions, so combining them by rank recovers the strengths of both, for a fusion cost well under a millisecond.
 
-*The dense model's gain is mostly about recall.* On its own, the embedding model lifts Recall\@100 by 0.070 but its MRR gain over BM25 (+0.004) is indistinguishable from zero. It finds more of the relevant evidence somewhere in the list without reliably putting it first. A per-question paired test is what separates these two effects; a single average would blur them.
+*The dense model's gain is mostly about recall.* On its own, the embedding model lifts Recall\@100 by 0.070 but its MRR gain over BM25 (+0.004) is indistinguishable from zero. It finds more of the relevant evidence somewhere in the list without reliably putting it first. A per-question paired test separates these two effects, where a single average would blur them.
 
-*The re-ranker did not pay for itself.* The MS MARCO cross-encoder made nDCG\@10 slightly worse than plain fusion (−0.012, interval just touching zero) while adding about 14.5 seconds per question on CPU. Recall\@100 is unchanged by construction, because re-ranking only re-orders the pool. The likely cause is domain shift: the model learned relevance from short web passages and search clicks, not from consumer health questions matched to research abstracts. The practical lesson is that a re-ranker must be validated on in-domain judgements, or a domain-adapted one chosen, before it is added to a production path.
+*The re-ranker did not pay for itself.* The MS MARCO cross-encoder made nDCG\@10 slightly worse than plain fusion (−0.012, interval just touching zero) while adding about 14.5 seconds per question on CPU. Recall\@100 is unchanged by construction, because re-ranking only re-orders the pool. The likely cause is domain shift. The model learned relevance from short web passages and search clicks, and consumer health questions matched to research abstracts look quite different. In practice, a re-ranker must be validated on in-domain judgements (or replaced by a domain-adapted one) before it goes into a production path.
 
-![Per-question latency on CPU (log scale). The machine was running other jobs during this measurement, so absolute values are pessimistic; the orders of magnitude are the point.](figures/latency_by_system.png){#fig-lat width=72%}
+![Per-question latency on CPU (log scale). The machine was running other jobs during this measurement, so absolute values are pessimistic. The orders of magnitude are what matter.](figures/latency_by_system.png){#fig-lat width=72%}
 
 ## Cost profile
 
-Per question, BM25 took 0.4 ms, the dense encoder about a third of a second and the cross-encoder over 14 seconds for 100 pairs (medians on a shared laptop CPU). Encoding the corpus once took 17 minutes on the same CPU; on a GPU both neural stages are much faster, but the ratios between stages remain. For this corpus the best quality-per-millisecond is hybrid fusion: it is the most accurate system and costs essentially the same as the dense retriever alone.
+Per question, BM25 took 0.4 ms, the dense encoder about a third of a second and the cross-encoder over 14 seconds for 100 pairs (medians on a shared laptop CPU). Encoding the corpus once took 17 minutes on the same CPU. Both neural stages are much faster on a GPU, but the ratios between stages remain. For this corpus, hybrid fusion gives the best quality per millisecond. It is the most accurate system and costs essentially the same as the dense retriever alone.
 
 ## Does tuning the defaults help?
 
-Two Optuna searches [@akiba2019] of 200 trials each tuned BM25 `k1`/`b` and, for the hybrid, also the fusion constant and a weight on the dense list, maximising nDCG\@10 on the 324 dev questions with the defaults as the first trial. Both found settings that were slightly better on dev (BM25 0.284 to 0.289, hybrid 0.335 to 0.342), but neither carried over to test: tuned BM25 gained +0.003 (95% CI −0.002 to +0.009) and the tuned hybrid lost −0.007 (CI −0.015 to +0.002), with a significant loss in MRR\@10. The standard defaults are already close to optimal here, so all reported results use them.
+Two Optuna searches [@akiba2019] of 200 trials each tuned BM25 `k1`/`b` and, for the hybrid, also the fusion constant and a weight on the dense list, maximising nDCG\@10 on the 324 dev questions with the defaults as the first trial. Both found settings that were slightly better on dev (BM25 0.284 to 0.289, hybrid 0.335 to 0.342), but neither carried over to test. Tuned BM25 gained +0.003 (95% CI −0.002 to +0.009) and the tuned hybrid lost −0.007 (CI −0.015 to +0.002), with a significant loss in MRR\@10. The standard defaults are already close to optimal here, so all reported results use them.
 
 ## Fine-tuning (set up, not yet run)
 
-The package module `evidence_ir.finetune` (run from a Colab notebook) fine-tunes the encoder on the 2,590 training questions with a contrastive loss that uses the other documents in each batch as negatives (with no repeated question inside a batch). After every epoch, up to three, and for each of three learning rates (1e-5, 2e-5, 5e-5), it scores dense nDCG\@10 on the separate dev split; the untuned model is also a candidate, so fine-tuning is kept only if it helps on dev. The best dev checkpoint and the base model are then each evaluated once on the test split (BM25, dense and hybrid fusion) with the same code and paired tests, so the test split plays no part in training or model selection. An offline test with a fake encoder checks exactly that. It requires a GPU and has not been run yet, so no fine-tuning results are claimed here.
+The package module `evidence_ir.finetune` (run from a Colab notebook) fine-tunes the encoder on the 2,590 training questions with a contrastive loss that uses the other documents in each batch as negatives (with no repeated question inside a batch). After every epoch, up to three, and for each of three learning rates (1e-5, 2e-5, 5e-5), it scores dense nDCG\@10 on the separate dev split. The untuned model is also a candidate, so fine-tuning is kept only if it helps on dev. The best dev checkpoint and the base model are then each evaluated once on the test split (BM25, dense and hybrid fusion) with the same code and paired tests, so the test split plays no part in training or model selection. An offline test with a fake encoder checks exactly that. It requires a GPU and has not been run yet, so no fine-tuning results are claimed here.
 
 
 # What this demonstrates
 
-- *Retrieval engineering for RAG*: lexical, dense, fusion and re-ranking stages built as interchangeable components behind one interface, with a service endpoint that reports per-stage latency.
-- *Evaluation discipline*: standard IR metrics implemented and checked against hand-computed values, a baseline that reproduces the published figure, paired significance tests, and a willingness to report that a fashionable component made things worse.
-- *Cost-aware decisions*: quality is reported next to latency for every stage, so a team can choose a point on the quality-cost curve rather than assume the most complex pipeline is best.
-- *Production habits*: an offline test suite with fake models, CI on three Python versions, a typed FastAPI service, and a reproducible `run-all` command that writes every number in this brief.
+- *Retrieval engineering for RAG.* Lexical, dense, fusion and re-ranking stages are interchangeable components behind one interface, and the service endpoint reports per-stage latency.
+- *Evaluation discipline.* The standard IR metrics are implemented and checked against hand-computed values, the baseline reproduces the published figure, and comparisons use paired significance tests. I also report that a fashionable component made things worse.
+- *Cost-aware decisions.* Quality sits next to latency for every stage, so a team can pick a point on the quality-cost curve instead of assuming the most complex pipeline is best.
+- *Production habits.* The repo has an offline test suite with fake models, CI on three Python versions, a typed FastAPI service and a reproducible `run-all` command that writes every number in this brief.
 
 # Limitations and next steps
 
 - *One corpus, one split, one run per model.* The intervals reflect sampling over questions, not training variance or other corpora. The conclusions, especially about re-ranking, may not transfer to other medical collections or to clinical notes.
-- *Default parameters.* BM25 `k1`/`b` and the fusion constant are standard defaults; a dev-split Optuna search did not beat them on test. Candidate depth was not tuned.
+- *Default parameters.* BM25 `k1`/`b` and the fusion constant are standard defaults, and a dev-split Optuna search did not beat them on test. Candidate depth was not tuned.
 - *Small models only.* Larger embedding models, a weighted fusion learned on dev data, and a domain-adapted (biomedical) re-ranker are the obvious experiments, each to be judged against hybrid fusion using the same paired tests.
 - *Latency was measured on a busy laptop CPU.* Serving numbers should be re-measured on the target hardware with batching.
 - *Fine-tuning has not yet been run* (see above).
@@ -176,3 +180,8 @@ evidence-ir serve --port 8000           # POST /search, GET /health
 ```
 
 The data is the BEIR release of NFCorpus, downloaded from the official BEIR mirror into `data/raw/` (it is not redistributed in the repository).
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
