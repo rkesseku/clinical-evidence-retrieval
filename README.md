@@ -173,10 +173,13 @@ src/evidence_ir/
   pipeline.py  the four systems with shared stages and per-stage timing
   metrics.py   nDCG / Recall / MRR, paired bootstrap
   evaluate.py  run-all: metrics.json, per_query.csv, report.md, figures
+  tuning.py    Optuna search of BM25 and hybrid settings on dev, scored once on test
   finetune.py  encoder fine-tuning: dev-selected checkpoint, single test evaluation
   serve.py     FastAPI app
+  cli.py       evidence-ir command: run-all, tune, serve
   testing.py   offline fake encoder/scorer used by the tests
-notebooks/finetune_embedder_colab.ipynb   Colab (GPU) runner for evidence_ir.finetune
+notebooks/finetune_embedder_colab.ipynb    Colab (GPU) runner for evidence_ir.finetune
+notebooks/finetune_embedder_kaggle.ipynb   Kaggle (GPU) version of the same runner
 docs/brief/brief.pdf                       project brief
 ```
 
